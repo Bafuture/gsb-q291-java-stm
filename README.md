@@ -30,3 +30,24 @@ Pair-wise GSB 标注任务仓库（第 18 批 / 291）。
 1. 在本仓库中完成提示词要求的全部内容。
 2. `./mvnw -q verify` 必须通过。
 3. 完成后在所属分支（A 或 B）上提交，产物快照的父提交必须是初始环境快照。
+
+## 实现说明（分支 A）
+
+STM 组件位于 `src/main/java/com/example/gsb/stm/`：
+
+- `Stm`：运行时入口。`atomically(...)` 执行读写事务，`readOnly(...)` 执行只读事务，`stats()` 返回统计快照。
+- `StmRef<T>`：事务引用，记录值、版本号与最后写入事务 id。
+- `Transaction`：事务日志（读集 = 引用→版本，写集 = 引用→待提交值，重复写只保留最后一次）。
+- `StmConfig`：重试上限与总时长限制；超限抛 `StmTransactionFailedException`，其 cause 为 `StmConflictException`（指明冲突引用与改写它的事务 id）。
+- `StmStats`：事务数、提交数、失败数、冲突重试次数与平均重试轮数。
+
+```java
+Stm stm = new Stm();
+StmRef<Integer> a = stm.newRef("a", 100);
+StmRef<Integer> b = stm.newRef("b", 0);
+stm.atomically(tx -> {
+    tx.write(a, tx.read(a) - 50);
+    tx.write(b, tx.read(b) + 50);
+    return null;
+});
+```
